@@ -303,6 +303,93 @@ if (axios.isAxiosError(error)) {
 
 Rule: urge to write `if (x) { if (y) { ... } }` → stop. Invert and return early.
 
+### 11b — Guard Clauses: Reject Invalid States First
+
+Validate/reject at the top of the function so the happy path stays at L1.
+
+**❌ Bad (nested):**
+```ts
+function charge(user, amount) {
+  if (user) {
+    if (user.isActive) {
+      if (amount > 0) {
+        return processCharge(user, amount);
+      }
+    }
+  }
+}
+```
+
+**✅ Good (guard clauses):**
+```ts
+function charge(user, amount) {
+  if (!user) throw new Error("user is required");
+  if (!user.isActive) throw new Error("user is inactive");
+  if (amount <= 0) throw new Error("amount must be positive");
+  return processCharge(user, amount);
+}
+```
+
+### 11c — Lookup Maps: Replace if/else-if Chains on a Key
+
+When branching on a value (type, status, role, action), use an object/Map lookup instead of `if/else if` or `switch`.
+
+**❌ Bad:**
+```ts
+function getLabel(status) {
+  if (status === "pending") return "Pending";
+  else if (status === "active") return "Active";
+  else if (status === "closed") return "Closed";
+  else return "Unknown";
+}
+```
+
+**✅ Good:**
+```ts
+const STATUS_LABELS = { pending: "Pending", active: "Active", closed: "Closed" };
+function getLabel(status) {
+  return STATUS_LABELS[status] ?? "Unknown";
+}
+```
+
+Also applies to dispatching handlers:
+```ts
+const ACTION_HANDLERS = { create: handleCreate, update: handleUpdate, delete: handleDelete };
+const handler = ACTION_HANDLERS[action];
+if (!handler) throw new Error(`Unknown action: ${action}`);
+return handler(payload);
+```
+
+### 11d — Polymorphism: Replace Type-Switching With Strategy/Interface
+
+When branches switch on a type/kind and each branch has non-trivial behavior, extract each branch into its own class/strategy implementing a shared interface. Ties directly to OCP + DIP (R13).
+
+**❌ Bad:**
+```ts
+function area(shape) {
+  if (shape.kind === "circle") return Math.PI * shape.r ** 2;
+  else if (shape.kind === "square") return shape.side ** 2;
+  else if (shape.kind === "triangle") return 0.5 * shape.base * shape.height;
+}
+```
+
+**✅ Good:**
+```ts
+interface Shape { area(): number; }
+class Circle implements Shape { constructor(private r: number) {} area() { return Math.PI * this.r ** 2; } }
+class Square implements Shape { constructor(private side: number) {} area() { return this.side ** 2; } }
+class Triangle implements Shape { constructor(private base: number, private height: number) {} area() { return 0.5 * this.base * this.height; } }
+
+function totalArea(shapes: Shape[]) {
+  return shapes.reduce((sum, s) => sum + s.area(), 0);
+}
+```
+
+**When to use which:**
+- **11b Guard clauses** — invalid inputs / precondition checks.
+- **11c Lookup maps** — branching on a value where each branch is a simple return or single call.
+- **11d Polymorphism** — branching on a type where each branch has real behavior; new types added often.
+
 ## RULE 15 — No Unnecessary Comments
 
 **Code must be self-documenting. Comments only when the WHY is non-obvious.**
@@ -680,6 +767,7 @@ deleted_at TIMESTAMP NULL DEFAULT NULL
 - [ ] No commented-out/unreachable code
 - [ ] Every identifier honest/specific/descriptive
 - [ ] Nesting depth ≤ 2 levels
+- [ ] Branching flattened via guard clauses (11b) / lookup maps (11c) / polymorphism (11d) — no if/else-if chains on a value, no type-switching with logic
 - [ ] Loading state checked before auth/permission gate (Async State Guard)
 - [ ] String→number validated with `Number.isFinite` before use (NaN Guard)
 - [ ] OOP applied: encapsulation, SRP, DIP where relevant
